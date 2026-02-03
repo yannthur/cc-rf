@@ -37,13 +37,12 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- CHARGEMENT DES CLASSES ---
-# Basé sur l'ordre alphabétique des dossiers de ton dataset (image fournie)
 CLASS_NAMES = [
     'Battery', 'Biological', 'Cardboard', 'Clothes', 'Glass', 
     'Metal', 'Paper', 'Plastic', 'Shoes', 'Trash'
 ]
 
-# Dictionnaire de conseils de recyclage (Optionnel, pour rendre l'app plus utile)
+# Dictionnaire de conseils de recyclage
 RECYCLING_INFO = {
     'Battery': "🔋 Dangers chimiques. Ne pas jeter à la poubelle normale. Déposer en point de collecte.",
     'Biological': "🍎 Compostable. Mettre dans le bac à compost ou déchets organiques.",
@@ -74,7 +73,13 @@ model = load_classification_model()
 def predict_image(image_data, model):
     # 1. Redimensionner l'image comme lors de l'entraînement (224, 224)
     size = (224, 224)
-    image = ImageOps.fit(image_data, size, Image.ANTIALIAS)
+    
+    # CORRECTION ICI : Utilisation de Image.LANCZOS au lieu de Image.ANTIALIAS
+    try:
+        image = ImageOps.fit(image_data, size, Image.LANCZOS)
+    except AttributeError:
+        # Fallback si Image.LANCZOS n'est pas trouvé (très vieilles versions), on réessaie ANTIALIAS
+        image = ImageOps.fit(image_data, size, Image.ANTIALIAS)
     
     # 2. Convertir en array numpy
     img_array = np.asarray(image)
@@ -86,8 +91,7 @@ def predict_image(image_data, model):
     # 4. Ajouter la dimension du batch (1, 224, 224, 3)
     img_array_expanded = np.expand_dims(img_array, axis=0)
     
-    # 5. Pré-traitement spécifique à EfficientNet (CRUCIAL car utilisé à l'entraînement)
-    # Note: efficientnet.preprocess_input ne divise pas toujours par 255, cela dépend de l'implémentation Keras
+    # 5. Pré-traitement spécifique à EfficientNet
     preprocessed_img = preprocess_input(img_array_expanded)
     
     # 6. Prédiction
@@ -132,10 +136,9 @@ if uploaded_file is not None:
                 predictions = predict_image(image, model)
                 
                 # Récupérer la classe avec la plus haute probabilité
-                score = tf.nn.softmax(predictions[0]) # Softmax pour avoir des probabilités propres si pas déjà fait
                 predicted_class_index = np.argmax(predictions)
                 predicted_class_name = CLASS_NAMES[predicted_class_index]
-                confidence = np.max(predictions) * 100 # Ou np.max(score) * 100
+                confidence = np.max(predictions) * 100
                 
             # Affichage du résultat principal
             st.success(f"Résultat : **{predicted_class_name}**")
@@ -151,9 +154,6 @@ if uploaded_file is not None:
             # Affichage détaillé des probabilités (Graphique)
             st.markdown("#### 📊 Détails des probabilités")
             
-            # Création d'un DataFrame pour le graphique
-            # On utilise 'score' si on a appliqué softmax, sinon 'predictions[0]' directement
-            # Comme EfficientNet outputte souvent des logits ou des activations brutes, softmax est plus sûr pour l'affichage
             chart_data = pd.DataFrame({
                 'Catégorie': CLASS_NAMES,
                 'Probabilité': predictions[0]
